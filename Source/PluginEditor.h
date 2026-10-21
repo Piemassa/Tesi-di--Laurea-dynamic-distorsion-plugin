@@ -3,6 +3,7 @@
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "VerticalMeter.h"
 
 typedef AudioProcessorValueTreeState::SliderAttachment SliderAttachment;
 typedef AudioProcessorValueTreeState::ButtonAttachment ButtonAttachment;
@@ -24,16 +25,29 @@ private:
     Primo_distoAudioProcessor& audioProcessor;
     AudioProcessorValueTreeState& parameters;
     
-    Slider driveAmountSlider;
-    Slider typeSelectorSlider;
+    void updateModeButtons (float newValue);
+    
+    VerticalMeter meterIn, meterOut;
+    
+    Slider driveAmountKnob;
+//    Slider typeSelectorSlider;
     Slider attackKnob;
     Slider sustainKnob;
 
+    juce::TextButton driveButton[5];
+    juce::TextButton driveON,transientON;
+    
+
     //gli attachment vanno dichiarati per ultimi altrimenti in modo che vengano distrutti prima degli slider
     std::unique_ptr<SliderAttachment> driveAmountAttachment;
-    std::unique_ptr<SliderAttachment> typeSelectorAttachment;
+//    std::unique_ptr<SliderAttachment> typeSelectorAttachment;
     std::unique_ptr<SliderAttachment> attackKnobAttachment;
     std::unique_ptr<SliderAttachment> sustainKnobAttachment;
+    std::unique_ptr<ButtonAttachment> driveByAttachment;
+    std::unique_ptr<ButtonAttachment> transientByAttachment;
+    
+    
+    std::unique_ptr<juce::ParameterAttachment> modeAttachment;
     
     juce::Label attackLabel;
     juce::Label sustainLabel;

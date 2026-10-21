@@ -4,6 +4,7 @@
 #include "Distorsori.h"
 #include <juce_dsp/juce_dsp.h>
 #include "TransientShaper.h"
+#include "MeteringProcess.h"
 
 //==============================================================================
 class Primo_distoAudioProcessor  : public juce::AudioProcessor, public AudioProcessorValueTreeState::Listener
@@ -42,6 +43,8 @@ class Primo_distoAudioProcessor  : public juce::AudioProcessor, public AudioProc
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
     
+    MeterPersonale::MeteringDsp& linkMeter(int meterNumber);
+    
     AudioProcessorValueTreeState parameters;
     
 
@@ -54,6 +57,11 @@ private:
     
     juce::dsp::Oversampling<float>  m_Oversampler;
     void parameterChanged(const String& paramID, float newValue) override;
+    
+    MeterPersonale::MeteringDsp meterInput;
+    MeterPersonale::MeteringDsp meterOutput;
+    
+    bool driveCircuitState, transientCircuitState;
     
     //==============================================================================
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (Primo_distoAudioProcessor)

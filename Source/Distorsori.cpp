@@ -76,6 +76,7 @@ void Distorsion_P::softSign(float &sample, float driveAmount) //type 2
 {
     auto temp = sample * driveAmount;
     sample = temp / (1 + abs(temp));
+    sample = sample / driveAmount; //testando questa cosa
 }
 
 void Distorsion_P::TapeLike2(float &sample, float driveAmount) //type 3
