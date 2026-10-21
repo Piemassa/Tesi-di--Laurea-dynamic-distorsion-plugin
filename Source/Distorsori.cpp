@@ -67,34 +67,43 @@ void Distorsion_P::write_DriveAmount(float newValue)
 
 void Distorsion_P::Tanh(float &sample, float driveAmount ) //type 1
 {
+    driveAmount += 1;
     auto temp = sample * driveAmount;
     sample = tanh(temp);
+    sample = sample / std::sqrt(driveAmount);
     
 }
 
 void Distorsion_P::softSign(float &sample, float driveAmount) //type 2
 {
+    driveAmount += 1;
     auto temp = sample * driveAmount;
     sample = temp / (1 + abs(temp));
-    sample = sample / driveAmount; //testando questa cosa
+    sample = sample / std::sqrt(driveAmount);
+
 }
 
 void Distorsion_P::TapeLike2(float &sample, float driveAmount) //type 3
 {
+    driveAmount += 1;
     auto k = 3.782;
     auto temp = sample * driveAmount;
     sample =  tanh( k * temp) / tanh(k);
+    sample = sample / std::sqrt(driveAmount);
     
 }
 
 void Distorsion_P::disto4(float &sample, float driveAmount) //type 4
 {
+    driveAmount += 1;
     auto k = driveAmount;
     sample = sample + (  (k/(juce::MathConstants<float>::twoPi)) * sin(juce::MathConstants<float>::twoPi*sample) );
+    sample = sample / (1.0f + (k * 0.3f));
 }
 
 void Distorsion_P::turboDistorto(float &sample, float driveAmount) //turbodrive di pirkle
 {
+    driveAmount += 1;
     auto k = driveAmount;
     auto m = k/3.0f;
     
@@ -106,12 +115,17 @@ void Distorsion_P::turboDistorto(float &sample, float driveAmount) //turbodrive 
     
     sample = (tanh(k * sample) / tanh(k));
     
+    sample = sample / std::sqrt(std::sqrt(k));
+    
 }
 
 void Distorsion_P::wavefolding(float &sample, float driveAmount)
 {
+    driveAmount += 1;
     auto temp = sample * driveAmount;
     sample = processSampleHermite(temp);
+    
+    sample = sample / std::sqrt(driveAmount);
     
 }
 

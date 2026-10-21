@@ -21,7 +21,7 @@ class Distorsion_P {
     
     private:
     
-    int dist_type = 0;
+    int dist_type = 1;
     juce::Atomic<float> driveAmount = 0.0;
     
     void bypassDistorsion();                              //tipo 0

@@ -130,6 +130,7 @@ void Primo_distoAudioProcessor::parameterChanged(const String& paramID, float ne
          quello che ho bisogno di fare prima di poter mettere il valore all'interno di DriveAmount è rimapparlo in modo
          che sia espresso da 0 a 5. Passaggio fondamentale aggiungerei.
          Per farlo prendo ogni valore del parametro (che vanno da 0 a 100) e lo moltiplico per 0.05
+         Dopodichè sommo + 1 in modo da non avere dei valori di driveamount < 1
         */
         distorsione.write_DriveAmount(newValue * 0.05f);
     }
