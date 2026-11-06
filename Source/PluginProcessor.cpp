@@ -5,30 +5,25 @@
 //==============================================================================
 Primo_distoAudioProcessor::Primo_distoAudioProcessor()
 
-: parameters(*this, nullptr, "DIST",
-                {
-                    std::make_unique<juce::AudioParameterFloat>(ParameterID("DRIVEAMOUNT", 1), "Drive (%)", NormalisableRange<float>( 0.0f, 100.0f, 0.01f), 0.0f ),
-                    std::make_unique<juce::AudioParameterInt>(ParameterID("MODE", 1), "Type", 1, 5, 1),
-                    std::make_unique<juce::AudioParameterFloat>(ParameterID("ATTACK", 1), "Attack", NormalisableRange<float>( -1.0f, 1.0f, 0.001f), 0.0f),
-                    std::make_unique<juce::AudioParameterFloat>(ParameterID("SUSTAIN", 1), "Sustain", NormalisableRange<float>( -1.0f, 1.0f, 0.001f), 0.0f),
-                    std::make_unique<juce::AudioParameterBool>(ParameterID("DRIVEBYPASS", 1), "DriveBypass", true),
-                    std::make_unique<juce::AudioParameterBool>(ParameterID("TRANSIENTBYPASS", 1), "TransientBypass", true),
-            
-                }
-             ), m_Oversampler(2,2, juce::dsp::Oversampling<float>::FilterType::filterHalfBandPolyphaseIIR)
+: AudioProcessor (BusesProperties() .withInput  ("Input",  juce::AudioChannelSet::stereo(), true) .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
+parameters(*this, nullptr, "DIST", Parameters::createParameterLayout()),
+m_Oversampler(2,2, juce::dsp::Oversampling<float>::FilterType::filterHalfBandPolyphaseIIR)
 
 {
     
-    parameters.addParameterListener("DRIVEAMOUNT", this);
-    parameters.addParameterListener("MODE", this);
-    parameters.addParameterListener("ATTACK", this);
-    parameters.addParameterListener("SUSTAIN", this);
-    parameters.addParameterListener("DRIVEBYPASS", this);
-    parameters.addParameterListener("TRANSIENTBYPASS", this);
+    Parameters::addListenerToAllParameters(parameters, this);
     
-    distorsione.writeDistType(1);
-    driveCircuitState = 1;
-    transientCircuitState = 1;
+    distorsione_low.writeDistType(1);
+    distorsione_mid.writeDistType(1);
+    distorsione_high.writeDistType(1);
+    
+    driveCircuitState_low = 1;
+    driveCircuitState_mid = 1;
+    driveCircuitState_high = 1;
+    
+    transientCircuitState_low = 1;
+    transientCircuitState_mid = 1;
+    transientCircuitState_high = 1;
     
 }
 
@@ -39,12 +34,48 @@ Primo_distoAudioProcessor::~Primo_distoAudioProcessor()
 //==============================================================================
 void Primo_distoAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
+    
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate       = sampleRate;
+    spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
+    spec.numChannels      = static_cast<juce::uint32> (getTotalNumInputChannels());
+    
+    //inizializzazione filtri
+    lowCrossoverLowPass.prepare(spec);
+    lowCrossoverHighPass.prepare(spec);
+    highCrossoverLowPass.prepare(spec);
+    highCrossoverHighPass.prepare(spec);
+    
+    lowCrossoverLowPass.setType(juce::dsp::LinkwitzRileyFilterType::lowpass);
+    lowCrossoverHighPass.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
+    highCrossoverLowPass.setType(juce::dsp::LinkwitzRileyFilterType::lowpass);
+    highCrossoverHighPass.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
+    
+    //frequenza di crossover (da cambaire successivamente con dei parametri)
+    
+    lowFreq = 250.0f;
+    highFreq = 2500.0f;
+    
+    lowCrossoverLowPass.setCutoffFrequency(lowFreq);
+    lowCrossoverHighPass.setCutoffFrequency(lowFreq);
+    
+    highCrossoverLowPass.setCutoffFrequency(highFreq);
+    highCrossoverHighPass.setCutoffFrequency(highFreq);
+    
+    lowBuffer.setSize(getTotalNumInputChannels(), samplesPerBlock);
+    midBuffer.setSize(getTotalNumInputChannels(), samplesPerBlock);
+    highBuffer.setSize(getTotalNumInputChannels(), samplesPerBlock);
+    
+    
+    
     meterInput.prepareToPlay(sampleRate);
     
     m_Oversampler.reset();
     m_Oversampler.initProcessing(samplesPerBlock);
     
-    TransientShaper.prepareToPlay(sampleRate, samplesPerBlock);
+    transientShaper_low.prepareToPlay(sampleRate, samplesPerBlock);
+    transientShaper_mid.prepareToPlay(sampleRate, samplesPerBlock);
+    transientShaper_high.prepareToPlay(sampleRate, samplesPerBlock);
 }
 
 void Primo_distoAudioProcessor::releaseResources()
@@ -59,60 +90,215 @@ void Primo_distoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     auto outCh = getTotalNumOutputChannels();
     auto numSample = buffer.getNumSamples();
     
-    auto leftChannel = buffer.getWritePointer(0);
-    auto rightChannel = buffer.getWritePointer(1);
-    
     //meterINPUT
     meterInput.processBlock(buffer, numSample, inCh, outCh);
     
     
-    //transient shaper
-    if(transientCircuitState == 1)
+    
+    // --------------------- multibanda -------------- //
+    
+    for(int ch = 0; ch < inCh; ++ch)
     {
-        for(int smp = 0; smp < numSample; ++smp )
+        lowBuffer.copyFrom(ch, 0, buffer, ch, 0, numSample);
+        midBuffer.copyFrom(ch, 0, buffer, ch, 0, numSample);
+    }
+    
+    juce::dsp::AudioBlock<float> lowBlock (lowBuffer);
+    juce::dsp::AudioBlock<float> midBlock (midBuffer);
+    
+    lowCrossoverLowPass.process (juce::dsp::ProcessContextReplacing<float>(lowBlock));
+    lowCrossoverHighPass.process (juce::dsp::ProcessContextReplacing<float>(midBlock));
+    
+    //secondo split
+    
+    for (int ch = 0; ch < inCh; ++ch)
+    {
+        highBuffer.copyFrom( ch, 0, midBuffer, ch, 0, numSample);
+    }
+    
+    juce::dsp::AudioBlock<float> highBlock (highBuffer);
+    
+    highCrossoverLowPass.process (juce::dsp::ProcessContextReplacing<float>(midBlock));
+    highCrossoverHighPass.process (juce::dsp::ProcessContextReplacing<float>(highBlock));
+    
+    auto leftChannel_low = lowBuffer.getWritePointer(0);
+    auto rightChannel_low = lowBuffer.getWritePointer(1);
+    
+    auto leftChannel_mid= midBuffer.getWritePointer(0);
+    auto rightChannel_mid = midBuffer.getWritePointer(1);
+    
+    auto leftChannel_high = highBuffer.getWritePointer(0);
+    auto rightChannel_high = highBuffer.getWritePointer(1);
+    
+    // --------------------- multibanda -------------- //
+    
+    
+
+    //NUOVO PEZZO DI PLUGIN
+    
+    
+    for(AudioModuleType module : moduleChain)
+    {
+        switch (module)
         {
-            
-            float leftSampleCompare = std::abs(buffer.getSample(0, smp));
-            float rightSampleCompare = std::abs(buffer.getSample(1, smp));
-            
-            //lo rende mono ovvero il sample su cui lavoro sarà il max tra sinistra e destra
-            float input_shaper = std::max(leftSampleCompare,rightSampleCompare);
-            
-            //chiamo transient shaper process block e gli passo il sample di input
-            TransientShaper.processBlock(input_shaper);
-            
-            //userò un metodo di transient shaper per farmi tornare il valore di gain da applicare al sample
-            float gainMod = TransientShaper.getGainValue();
-            
-            //applico il valore di gain al sample
-            leftChannel[smp] *= gainMod;
-            rightChannel[smp] *= gainMod;
-            //buffer.setSample(0, smp, buffer.getSample(0, smp) * gainMod); //modulo il sample left channel
-            //buffer.setSample(1, smp, buffer.getSample(1, smp) * gainMod); //modulo il sample right channel
-            
+            case AudioModuleType::TransientShaperModule:
+                
+                //LOW TRANSIENT
+                if(transientCircuitState_low == 1)
+                {
+                    for(int smp = 0; smp < numSample; ++smp )
+                    {
+                        
+                        float leftSampleCompare = std::abs(lowBuffer.getSample(0, smp));
+                        float rightSampleCompare = std::abs(lowBuffer.getSample(1, smp));
+                        
+                        //lo rende mono ovvero il sample su cui lavoro sarà il max tra sinistra e destra
+                        float input_shaper = std::max(leftSampleCompare,rightSampleCompare);
+                        
+                        //chiamo transient shaper process block e gli passo il sample di input
+                        transientShaper_low.processBlock(input_shaper);
+                        
+                        //userò un metodo di transient shaper per farmi tornare il valore di gain da applicare al sample
+                        float gainMod = transientShaper_low.getGainValue();
+                        
+                        //applico il valore di gain al sample
+                        leftChannel_low[smp] *= gainMod;
+                        rightChannel_low[smp] *= gainMod;
+
+                    }
+                }
+                
+                //MID TRANSIENT
+                if(transientCircuitState_mid == 1)
+                {
+                    for(int smp = 0; smp < numSample; ++smp )
+                    {
+                        
+                        float leftSampleCompare = std::abs(midBuffer.getSample(0, smp));
+                        float rightSampleCompare = std::abs(midBuffer.getSample(1, smp));
+                        
+                        //lo rende mono ovvero il sample su cui lavoro sarà il max tra sinistra e destra
+                        float input_shaper = std::max(leftSampleCompare,rightSampleCompare);
+                        
+                        //chiamo transient shaper process block e gli passo il sample di input
+                        transientShaper_mid.processBlock(input_shaper);
+                        
+                        //userò un metodo di transient shaper per farmi tornare il valore di gain da applicare al sample
+                        float gainMod = transientShaper_mid.getGainValue();
+                        
+                        //applico il valore di gain al sample
+                        leftChannel_mid[smp] *= gainMod;
+                        rightChannel_mid[smp] *= gainMod;
+                        
+                    }
+                }
+                
+                //HIGH TRANSIENT
+                if(transientCircuitState_high == 1)
+                {
+                    for(int smp = 0; smp < numSample; ++smp )
+                    {
+                        
+                        float leftSampleCompare = std::abs(highBuffer.getSample(0, smp));
+                        float rightSampleCompare = std::abs(highBuffer.getSample(1, smp));
+                        
+                        //lo rende mono ovvero il sample su cui lavoro sarà il max tra sinistra e destra
+                        float input_shaper = std::max(leftSampleCompare,rightSampleCompare);
+                        
+                        //chiamo transient shaper process block e gli passo il sample di input
+                        transientShaper_high.processBlock(input_shaper);
+                        
+                        //userò un metodo di transient shaper per farmi tornare il valore di gain da applicare al sample
+                        float gainMod = transientShaper_high.getGainValue();
+                        
+                        //applico il valore di gain al sample
+                        leftChannel_high[smp] *= gainMod;
+                        rightChannel_high[smp] *= gainMod;
+                        
+                    }
+                }
+                
+                break;
+                
+            case AudioModuleType::DistorsionModule:
+                
+                //LOW DISTORSION
+                if(driveCircuitState_low == 1)
+                {
+                    auto block =  juce::dsp::AudioBlock<float>(lowBuffer);
+                    auto upBlock = m_Oversampler.processSamplesUp(block);
+                    
+                    for (int ch = 0; ch < upBlock.getNumChannels(); ++ch)
+                    {
+                        
+                        auto* channelWriterPointer = upBlock.getChannelPointer(ch);
+                        
+                        for (int smp = 0; smp < upBlock.getNumSamples(); ++smp)
+                        {
+                            distorsione_low.processBlock(channelWriterPointer[smp]);
+                        }
+                    }
+                    
+                    m_Oversampler.processSamplesDown(block);
+                }
+                
+                //MID DISTORSION
+                if(driveCircuitState_mid == 1)
+                {
+                    auto block =  juce::dsp::AudioBlock<float>(midBuffer);
+                    auto upBlock = m_Oversampler.processSamplesUp(block);
+                    
+                    for (int ch = 0; ch < upBlock.getNumChannels(); ++ch)
+                    {
+                        
+                        auto* channelWriterPointer = upBlock.getChannelPointer(ch);
+                        
+                        for (int smp = 0; smp < upBlock.getNumSamples(); ++smp)
+                        {
+                            distorsione_mid.processBlock(channelWriterPointer[smp]);
+                        }
+                    }
+                    
+                    m_Oversampler.processSamplesDown(block);
+                }
+                
+                //HIGH DISTORSION
+                if(driveCircuitState_high == 1)
+                {
+                    auto block =  juce::dsp::AudioBlock<float>(highBuffer);
+                    auto upBlock = m_Oversampler.processSamplesUp(block);
+                    
+                    for (int ch = 0; ch < upBlock.getNumChannels(); ++ch)
+                    {
+                        
+                        auto* channelWriterPointer = upBlock.getChannelPointer(ch);
+                        
+                        for (int smp = 0; smp < upBlock.getNumSamples(); ++smp)
+                        {
+                            distorsione_high.processBlock(channelWriterPointer[smp]);
+                        }
+                    }
+                    
+                    m_Oversampler.processSamplesDown(block);
+                }
+                
+            default:
+                break;
         }
     }
     
+    // --------------------- multibanda -------------- //
     
-    //distorsione
-    if(driveCircuitState == 1)
-    {
-        auto block =  juce::dsp::AudioBlock<float>(buffer);
-        auto upBlock = m_Oversampler.processSamplesUp(block);
-        
-        for (int ch = 0; ch < upBlock.getNumChannels(); ++ch)
+    buffer.clear(); // Pulisce il buffer di output
+        for (int ch = 0; ch < inCh; ++ch)
         {
-            
-            auto* channelWriterPointer = upBlock.getChannelPointer(ch);
-            
-            for (int smp = 0; smp < upBlock.getNumSamples(); ++smp)
-            {
-                distorsione.processBlock(channelWriterPointer[smp]);
-            }
+            buffer.addFrom (ch, 0, lowBuffer,  ch, 0, numSample);
+            buffer.addFrom (ch, 0, midBuffer,  ch, 0, numSample);
+            buffer.addFrom (ch, 0, highBuffer, ch, 0, numSample);
         }
-        
-        m_Oversampler.processSamplesDown(block);
-    }
+    
+    // --------------------- multibanda -------------- //
+    
     
     //meterOut
     meterOutput.processBlock(buffer, numSample, inCh, outCh);
@@ -123,7 +309,7 @@ void Primo_distoAudioProcessor::parameterChanged(const String& paramID, float ne
 {
     
     
-    if(paramID == "DRIVEAMOUNT")
+    if(paramID == Parameters::nameDriveLow)
     {
         /*
          il valore di driveamount si deve aggirare da 0 a 5. Il valore che ricevo dal parametro è una percentuale.
@@ -132,32 +318,85 @@ void Primo_distoAudioProcessor::parameterChanged(const String& paramID, float ne
          Per farlo prendo ogni valore del parametro (che vanno da 0 a 100) e lo moltiplico per 0.05
          Dopodichè sommo + 1 in modo da non avere dei valori di driveamount < 1
         */
-        distorsione.write_DriveAmount(newValue * 0.05f);
+        distorsione_low.write_DriveAmount(newValue * 0.05f);
     }
     
-    if(paramID == "MODE")
+    if(paramID == Parameters::nameDriveMid)
     {
-        distorsione.writeDistType(newValue);
+        distorsione_mid.write_DriveAmount(newValue * 0.05f);
     }
     
-    if(paramID == "ATTACK")
+    if(paramID == Parameters::nameDriveHigh)
     {
-        TransientShaper.writeAttackKnob(newValue);
+        distorsione_high.write_DriveAmount(newValue * 0.05f);
     }
     
-    if(paramID == "SUSTAIN")
+    if(paramID == Parameters::nameMode)
     {
-        TransientShaper.writeSustainKnob(newValue);
+        distorsione_low.writeDistType(newValue);
+        distorsione_mid.writeDistType(newValue);
+        distorsione_high.writeDistType(newValue);
     }
     
-    if(paramID == "DRIVEBYPASS")
+    if(paramID == Parameters::nameAttackLow)
     {
-        driveCircuitState = newValue;
+        transientShaper_low.writeAttackKnob(newValue);
+    }
+    if(paramID == Parameters::nameAttackMid)
+    {
+        transientShaper_mid.writeAttackKnob(newValue);
+    }
+    if(paramID == Parameters::nameAttackHigh)
+    {
+        transientShaper_high.writeAttackKnob(newValue);
     }
     
-    if(paramID == "TRANSIENTBYPASS")
+    if(paramID == Parameters::nameSustainLow)
     {
-        transientCircuitState = newValue;
+        transientShaper_low.writeSustainKnob(newValue);
+    }
+    if(paramID == Parameters::nameSustainMid)
+    {
+        transientShaper_mid.writeSustainKnob(newValue);
+    }
+    if(paramID == Parameters::nameSustainHigh)
+    {
+        transientShaper_high.writeSustainKnob(newValue);
+    }
+    
+    if(paramID == Parameters::nameDriveBypassLow)
+    {
+        driveCircuitState_low = newValue;
+    }
+    
+    if(paramID == Parameters::nameDriveBypassMid)
+    {
+        driveCircuitState_mid = newValue;
+    }
+    
+    if(paramID == Parameters::nameDriveBypassHigh)
+    {
+        driveCircuitState_high = newValue;
+    }
+    
+    if(paramID == Parameters::nameTransientBypassLow)
+    {
+        transientCircuitState_low = newValue;
+    }
+    
+    if(paramID == Parameters::nameTransientBypassMid)
+    {
+        transientCircuitState_mid = newValue;
+    }
+    
+    if(paramID == Parameters::nameTransientBypassHigh)
+    {
+        transientCircuitState_high = newValue;
+    }
+    
+    if(paramID == Parameters::nameOrder)
+    {
+        updateModuleOrder(newValue);
     }
     
     
@@ -179,8 +418,32 @@ MeterPersonale::MeteringDsp& Primo_distoAudioProcessor::linkMeter(int meterNumbe
 }
 
 
+void Primo_distoAudioProcessor::updateModuleOrder(int orderChoice)
+{
+    // 0 = transientShaper -> distorsion
+    // 1 = distorsion -> transientShaper
+    moduleChain.clear();
+    
+    if(orderChoice == 1)
+    {
+        moduleChain.push_back(AudioModuleType::TransientShaperModule);
+        moduleChain.push_back(AudioModuleType::DistorsionModule);
+    }
+    else
+    {
+        moduleChain.push_back(AudioModuleType::DistorsionModule);
+        moduleChain.push_back(AudioModuleType::TransientShaperModule);
+    }
+}
+
 
 //==============================================================================
+
+bool Primo_distoAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+{
+    return layouts.getMainInputChannelSet()  == juce::AudioChannelSet::stereo()
+        && layouts.getMainOutputChannelSet() == juce::AudioChannelSet::stereo();
+}
 
 juce::AudioProcessorEditor* Primo_distoAudioProcessor::createEditor()
 {
