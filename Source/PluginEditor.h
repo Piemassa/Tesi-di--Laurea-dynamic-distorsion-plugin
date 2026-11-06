@@ -4,6 +4,7 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 #include "VerticalMeter.h"
+#include "BandComponent.h"
 
 typedef AudioProcessorValueTreeState::SliderAttachment SliderAttachment;
 typedef AudioProcessorValueTreeState::ButtonAttachment ButtonAttachment;
@@ -29,28 +30,17 @@ private:
     
     VerticalMeter meterIn, meterOut;
     
-    Slider driveAmountKnob;
-//    Slider typeSelectorSlider;
-    Slider attackKnob;
-    Slider sustainKnob;
+    std::unique_ptr<BandComponent> bandLow, bandMid, bandHigh;
 
     juce::TextButton driveButton[5];
-    juce::TextButton driveON,transientON;
+    juce::ComboBox moduleOrder;
     
 
-    //gli attachment vanno dichiarati per ultimi altrimenti in modo che vengano distrutti prima degli slider
-    std::unique_ptr<SliderAttachment> driveAmountAttachment;
-//    std::unique_ptr<SliderAttachment> typeSelectorAttachment;
-    std::unique_ptr<SliderAttachment> attackKnobAttachment;
-    std::unique_ptr<SliderAttachment> sustainKnobAttachment;
-    std::unique_ptr<ButtonAttachment> driveByAttachment;
-    std::unique_ptr<ButtonAttachment> transientByAttachment;
+    //gli attachment vanno dichiarati per ultimi in modo che vengano distrutti prima degli slider
+    std::unique_ptr<juce::AudioProcessorValueTreeState::ComboBoxAttachment> moduleOrderAttachment;
     
     
-    std::unique_ptr<juce::ParameterAttachment> modeAttachment;
-    
-    juce::Label attackLabel;
-    juce::Label sustainLabel;
+    std::unique_ptr<juce::ParameterAttachment> modeAttachment; //attachment per la selezione della modalità di distorsione
     
 
     
