@@ -5,6 +5,7 @@
 #include <juce_dsp/juce_dsp.h>
 #include "TransientShaper.h"
 #include "MeteringProcess.h"
+#include "PluginParameters.h"
 
 //==============================================================================
 class Primo_distoAudioProcessor  : public juce::AudioProcessor, public AudioProcessorValueTreeState::Listener
@@ -45,10 +46,23 @@ class Primo_distoAudioProcessor  : public juce::AudioProcessor, public AudioProc
     
     MeterPersonale::MeteringDsp& linkMeter(int meterNumber);
     
+    enum class AudioModuleType {
+        TransientShaperModule,
+        DistorsionModule
+    };
+    
+    
     AudioProcessorValueTreeState parameters;
     
 
 private:
+    
+    //vettore moduli
+    std::vector<AudioModuleType> moduleChain {
+        AudioModuleType::TransientShaperModule, AudioModuleType::DistorsionModule
+    };
+    
+    void updateModuleOrder(int orderChoice);
     
     Distorsion_P distorsione;
     

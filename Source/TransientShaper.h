@@ -20,7 +20,6 @@ class Transient_Shaper {
     void writeSustainKnob(float newValue);
     float readSustainKnob();
     
-    
     private:
     
     void setGainModulation(float newValue);
@@ -30,6 +29,7 @@ class Transient_Shaper {
     
     float attackDifferential = 0.0f;
     float sustainDifferential = 0.0f;
+    
     
     //Questi vanno collegati ai parametri
     float attackKnob = 0.0f, sustainKnob = 0.0f;

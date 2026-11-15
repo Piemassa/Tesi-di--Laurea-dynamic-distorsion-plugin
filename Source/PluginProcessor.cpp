@@ -5,26 +5,12 @@
 //==============================================================================
 Primo_distoAudioProcessor::Primo_distoAudioProcessor()
 
-: parameters(*this, nullptr, "DIST",
-                {
-                    std::make_unique<juce::AudioParameterFloat>(ParameterID("DRIVEAMOUNT", 1), "Drive (%)", NormalisableRange<float>( 0.0f, 100.0f, 0.01f), 0.0f ),
-                    std::make_unique<juce::AudioParameterInt>(ParameterID("MODE", 1), "Type", 1, 5, 1),
-                    std::make_unique<juce::AudioParameterFloat>(ParameterID("ATTACK", 1), "Attack", NormalisableRange<float>( -1.0f, 1.0f, 0.001f), 0.0f),
-                    std::make_unique<juce::AudioParameterFloat>(ParameterID("SUSTAIN", 1), "Sustain", NormalisableRange<float>( -1.0f, 1.0f, 0.001f), 0.0f),
-                    std::make_unique<juce::AudioParameterBool>(ParameterID("DRIVEBYPASS", 1), "DriveBypass", true),
-                    std::make_unique<juce::AudioParameterBool>(ParameterID("TRANSIENTBYPASS", 1), "TransientBypass", true),
-            
-                }
-             ), m_Oversampler(2,2, juce::dsp::Oversampling<float>::FilterType::filterHalfBandPolyphaseIIR)
+: parameters(*this, nullptr, "DIST", Parameters::createParameterLayout()),
+m_Oversampler(2,2, juce::dsp::Oversampling<float>::FilterType::filterHalfBandPolyphaseIIR)
 
 {
     
-    parameters.addParameterListener("DRIVEAMOUNT", this);
-    parameters.addParameterListener("MODE", this);
-    parameters.addParameterListener("ATTACK", this);
-    parameters.addParameterListener("SUSTAIN", this);
-    parameters.addParameterListener("DRIVEBYPASS", this);
-    parameters.addParameterListener("TRANSIENTBYPASS", this);
+    Parameters::addListenerToAllParameters(parameters, this);
     
     distorsione.writeDistType(1);
     driveCircuitState = 1;
@@ -41,10 +27,20 @@ void Primo_distoAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
 {
     meterInput.prepareToPlay(sampleRate);
     
+    const int    factor  = (int) m_Oversampler.getOversamplingFactor();   // 4 con Oversampling (2, 2, ...)
+    const double osRate  = sampleRate * factor;
+    const int    osBlock = samplesPerBlock * factor;
+    
+    juce::dsp::ProcessSpec spec;
+    spec.sampleRate       = osRate;
+    spec.maximumBlockSize = (juce::uint32) osBlock;
+    spec.numChannels      = 2;
+    
     m_Oversampler.reset();
     m_Oversampler.initProcessing(samplesPerBlock);
     
-    TransientShaper.prepareToPlay(sampleRate, samplesPerBlock);
+    
+    TransientShaper.prepareToPlay(osRate, osBlock);
 }
 
 void Primo_distoAudioProcessor::releaseResources()
@@ -59,60 +55,104 @@ void Primo_distoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     auto outCh = getTotalNumOutputChannels();
     auto numSample = buffer.getNumSamples();
     
-    auto leftChannel = buffer.getWritePointer(0);
-    auto rightChannel = buffer.getWritePointer(1);
+
     
     //meterINPUT
     meterInput.processBlock(buffer, numSample, inCh, outCh);
     
+    //UPSAMPLE
+    auto block =  juce::dsp::AudioBlock<float>(buffer);
+    auto upBlock = m_Oversampler.processSamplesUp(block);
     
-    //transient shaper
-    if(transientCircuitState == 1)
+    auto leftChannel = upBlock.getChannelPointer(0);
+    auto rightChannel = upBlock.getChannelPointer(1);
+    
+    
+    for(int smp = 0; smp < upBlock.getNumSamples(); ++smp)
     {
-        for(int smp = 0; smp < numSample; ++smp )
-        {
-            
-            float leftSampleCompare = std::abs(buffer.getSample(0, smp));
-            float rightSampleCompare = std::abs(buffer.getSample(1, smp));
-            
-            //lo rende mono ovvero il sample su cui lavoro sarà il max tra sinistra e destra
-            float input_shaper = std::max(leftSampleCompare,rightSampleCompare);
-            
-            //chiamo transient shaper process block e gli passo il sample di input
-            TransientShaper.processBlock(input_shaper);
-            
-            //userò un metodo di transient shaper per farmi tornare il valore di gain da applicare al sample
-            float gainMod = TransientShaper.getGainValue();
-            
-            //applico il valore di gain al sample
-            leftChannel[smp] *= gainMod;
-            rightChannel[smp] *= gainMod;
-            //buffer.setSample(0, smp, buffer.getSample(0, smp) * gainMod); //modulo il sample left channel
-            //buffer.setSample(1, smp, buffer.getSample(1, smp) * gainMod); //modulo il sample right channel
-            
-        }
-    }
-    
-    
-    //distorsione
-    if(driveCircuitState == 1)
-    {
-        auto block =  juce::dsp::AudioBlock<float>(buffer);
-        auto upBlock = m_Oversampler.processSamplesUp(block);
+        float leftSampleCompare = std::abs(leftChannel[smp]);
+        float rightSampleCompare = std::abs(rightChannel[smp]);
         
-        for (int ch = 0; ch < upBlock.getNumChannels(); ++ch)
+        float input_shaper = std::max(leftSampleCompare, rightSampleCompare);
+        TransientShaper.processBlock(input_shaper);
+        
+        float gainMod = TransientShaper.getGainValue();
+        
+        
+        
+        for(AudioModuleType module : moduleChain)
         {
-            
-            auto* channelWriterPointer = upBlock.getChannelPointer(ch);
-            
-            for (int smp = 0; smp < upBlock.getNumSamples(); ++smp)
+            //switch per ordine dei moduli
+            switch (module)
             {
-                distorsione.processBlock(channelWriterPointer[smp]);
+                case AudioModuleType::TransientShaperModule:
+                    
+                    if(transientCircuitState == 1)
+                    {
+                        leftChannel[smp] *= gainMod;
+                        rightChannel[smp] *= gainMod;
+                    }
+                    break;
+                    
+                case AudioModuleType::DistorsionModule:
+                    
+                    if(driveCircuitState == 1)
+                    {
+                        distorsione.processBlock(leftChannel[smp]);
+                        distorsione.processBlock(rightChannel[smp]);
+                    }
+                    
+                default:
+                break;
             }
         }
         
-        m_Oversampler.processSamplesDown(block);
+        
+        
     }
+    
+//    //transient shaper
+//    if(transientCircuitState == 1)
+//    {
+//        for(int smp = 0; smp < numSample; ++smp )
+//        {
+//            
+//            float leftSampleCompare = std::abs(leftChannel[smp]);
+//            float rightSampleCompare = std::abs(rightChannel[smp]);
+//            
+//            //lo rende mono ovvero il sample su cui lavoro sarà il max tra sinistra e destra
+//            float input_shaper = std::max(leftSampleCompare,rightSampleCompare);
+//            TransientShaper.calculateEnvelope(input_shaper);
+//            
+//            //chiamo transient shaper process block e gli passo il sample di input
+//            TransientShaper.processBlock();
+//            
+//            //userò un metodo di transient shaper per farmi tornare il valore di gain da applicare al sample
+//            float gainMod = TransientShaper.getGainValue();
+//            
+//            //applico il valore di gain al sample
+//            leftChannel[smp] *= gainMod;
+//            rightChannel[smp] *= gainMod;
+//
+//            
+//        }
+//    }
+//    
+//    
+//    //distorsione
+//    if(driveCircuitState == 1)
+//    {
+//            for (int smp = 0; smp < upBlock.getNumSamples(); ++smp)
+//            {
+//                distorsione.processBlock(leftChannel[smp]);
+//                distorsione.processBlock(rightChannel[smp]);
+//            }
+//    }
+//    
+    
+    
+    //DOWNSAMPLE
+    m_Oversampler.processSamplesDown(block);
     
     //meterOut
     meterOutput.processBlock(buffer, numSample, inCh, outCh);
@@ -123,7 +163,7 @@ void Primo_distoAudioProcessor::parameterChanged(const String& paramID, float ne
 {
     
     
-    if(paramID == "DRIVEAMOUNT")
+    if(paramID == Parameters::nameDrive)
     {
         /*
          il valore di driveamount si deve aggirare da 0 a 5. Il valore che ricevo dal parametro è una percentuale.
@@ -135,31 +175,35 @@ void Primo_distoAudioProcessor::parameterChanged(const String& paramID, float ne
         distorsione.write_DriveAmount(newValue * 0.05f);
     }
     
-    if(paramID == "MODE")
+    if(paramID == Parameters::nameMode)
     {
         distorsione.writeDistType(newValue);
     }
     
-    if(paramID == "ATTACK")
+    if(paramID == Parameters::nameAttack)
     {
         TransientShaper.writeAttackKnob(newValue);
     }
     
-    if(paramID == "SUSTAIN")
+    if(paramID == Parameters::nameSustain)
     {
         TransientShaper.writeSustainKnob(newValue);
     }
     
-    if(paramID == "DRIVEBYPASS")
+    if(paramID == Parameters::nameDriveBypass)
     {
         driveCircuitState = newValue;
     }
     
-    if(paramID == "TRANSIENTBYPASS")
+    if(paramID == Parameters::nameTransientBypass)
     {
         transientCircuitState = newValue;
     }
     
+    if(paramID == Parameters::nameOrder)
+    {
+        updateModuleOrder(newValue);
+    }
     
 }
 
@@ -176,6 +220,24 @@ MeterPersonale::MeteringDsp& Primo_distoAudioProcessor::linkMeter(int meterNumbe
             break;
     }
     return meterInput;
+}
+
+void Primo_distoAudioProcessor::updateModuleOrder(int orderChoice)
+{
+    // 0 = transientShaper -> distorsion
+    // 1 = distorsion -> transientShaper
+    moduleChain.clear();
+    
+    if(orderChoice == 1)
+    {
+        moduleChain.push_back(AudioModuleType::TransientShaperModule);
+        moduleChain.push_back(AudioModuleType::DistorsionModule);
+    }
+    else
+    {
+        moduleChain.push_back(AudioModuleType::DistorsionModule);
+        moduleChain.push_back(AudioModuleType::TransientShaperModule);
+    }
 }
 
 
