@@ -67,7 +67,7 @@ void Primo_distoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     auto leftChannel = upBlock.getChannelPointer(0);
     auto rightChannel = upBlock.getChannelPointer(1);
     
-    
+    //ciclo su tutti i sample
     for(int smp = 0; smp < upBlock.getNumSamples(); ++smp)
     {
         float leftSampleCompare = std::abs(leftChannel[smp]);
@@ -78,8 +78,7 @@ void Primo_distoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
         
         float gainMod = TransientShaper.getGainValue();
         
-        
-        
+        //ciclo sui moduli
         for(AudioModuleType module : moduleChain)
         {
             //switch per ordine dei moduli
@@ -110,47 +109,7 @@ void Primo_distoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
         
         
     }
-    
-//    //transient shaper
-//    if(transientCircuitState == 1)
-//    {
-//        for(int smp = 0; smp < numSample; ++smp )
-//        {
-//            
-//            float leftSampleCompare = std::abs(leftChannel[smp]);
-//            float rightSampleCompare = std::abs(rightChannel[smp]);
-//            
-//            //lo rende mono ovvero il sample su cui lavoro sarà il max tra sinistra e destra
-//            float input_shaper = std::max(leftSampleCompare,rightSampleCompare);
-//            TransientShaper.calculateEnvelope(input_shaper);
-//            
-//            //chiamo transient shaper process block e gli passo il sample di input
-//            TransientShaper.processBlock();
-//            
-//            //userò un metodo di transient shaper per farmi tornare il valore di gain da applicare al sample
-//            float gainMod = TransientShaper.getGainValue();
-//            
-//            //applico il valore di gain al sample
-//            leftChannel[smp] *= gainMod;
-//            rightChannel[smp] *= gainMod;
-//
-//            
-//        }
-//    }
-//    
-//    
-//    //distorsione
-//    if(driveCircuitState == 1)
-//    {
-//            for (int smp = 0; smp < upBlock.getNumSamples(); ++smp)
-//            {
-//                distorsione.processBlock(leftChannel[smp]);
-//                distorsione.processBlock(rightChannel[smp]);
-//            }
-//    }
-//    
-    
-    
+ 
     //DOWNSAMPLE
     m_Oversampler.processSamplesDown(block);
     
