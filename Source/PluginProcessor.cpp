@@ -39,6 +39,12 @@ void Primo_distoAudioProcessor::prepareToPlay (double sampleRate, int samplesPer
     m_Oversampler.reset();
     m_Oversampler.initProcessing(samplesPerBlock);
     
+    smoothInput.reset(sampleRate, 0.025f);
+    smoothInput.setCurrentAndTargetValue(1.0f);
+    smoothOutput.reset(sampleRate, 0.025f);
+    smoothOutput.setCurrentAndTargetValue(1.0f);
+    
+    
     
     TransientShaper.prepareToPlay(osRate, osBlock);
 }
@@ -56,7 +62,7 @@ void Primo_distoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     auto numSample = buffer.getNumSamples();
     bool stereo = buffer.getNumChannels() > 1 ? true : false;
     
-
+    smoothInput.applyGain(buffer, numSample);
     
     //meterINPUT
     meterInput.processBlock(buffer, numSample, inCh, outCh);
@@ -123,6 +129,8 @@ void Primo_distoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     //DOWNSAMPLE
     m_Oversampler.processSamplesDown(block);
     
+    smoothOutput.applyGain(buffer, numSample);
+    
     //meterOut
     meterOutput.processBlock(buffer, numSample, inCh, outCh);
     
@@ -172,6 +180,15 @@ void Primo_distoAudioProcessor::parameterChanged(const String& paramID, float ne
     if(paramID == Parameters::nameOrder)
     {
         updateModuleOrder(newValue);
+    }
+    
+    if(paramID == Parameters::nameGainIn)
+    {
+        smoothInput.setTargetValue(juce::Decibels::decibelsToGain(newValue));
+    }
+    if(paramID == Parameters::nameGainOut)
+    {
+        smoothOutput.setTargetValue(juce::Decibels::decibelsToGain(newValue));
     }
     
 }

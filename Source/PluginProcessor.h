@@ -57,6 +57,8 @@ class Primo_distoAudioProcessor  : public juce::AudioProcessor, public AudioProc
 
 private:
     
+    juce::SmoothedValue<float, juce::ValueSmoothingTypes::Linear> smoothInput, smoothOutput;
+    
     //vettore moduli
     std::vector<AudioModuleType> moduleChain {
         AudioModuleType::TransientShaperModule, AudioModuleType::DistorsionModule

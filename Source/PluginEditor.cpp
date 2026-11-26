@@ -46,6 +46,13 @@ Primo_distoAudioProcessorEditor::Primo_distoAudioProcessorEditor (Primo_distoAud
         
     }
     
+    //GAIN KNOB
+    inputGainKnob  = std::make_unique<LabeledKnob> (parameters, Parameters::nameGainIn,  "GainIn");
+    outputGainKnob = std::make_unique<LabeledKnob> (parameters, Parameters::nameGainOut, "GainOut");
+    
+    addAndMakeVisible(*inputGainKnob);
+    addAndMakeVisible(*outputGainKnob);
+
     //BANDA
     band1 = std::make_unique<BandComponent>(parameters, 1);
     addAndMakeVisible(*band1);
@@ -70,11 +77,25 @@ void Primo_distoAudioProcessorEditor::paint (juce::Graphics& g)
 
 void Primo_distoAudioProcessorEditor::resized()
 {
-    auto area = getLocalBounds().reduced(20);
+    auto area = getLocalBounds().reduced (20);
+
+    const int knobH = juce::jlimit (80, 120, area.getHeight() / 4);
+    const int colW  = juce::jlimit (60, 90, getWidth() / 14);
+
+    auto leftCol  = area.removeFromLeft  (colW);
+    auto rightCol = area.removeFromRight (colW);
+
+    // KNOB VOLUME (sotto i meter)
+    if (inputGainKnob != nullptr)
+        inputGainKnob->setBounds (leftCol.removeFromBottom (knobH));
+
+    if (outputGainKnob != nullptr)
+        outputGainKnob->setBounds (rightCol.removeFromBottom (knobH));
 
     // METER
-    meterIn.Component::setBounds  (area.removeFromLeft (60));
-    meterOut.Component::setBounds (area.removeFromRight (60));
+    meterIn.Component::setBounds  (leftCol.withTrimmedBottom (6));
+    meterOut.Component::setBounds (rightCol.withTrimmedBottom (6));
+
     area.reduce (10, 0);
 
     auto bottom = area.removeFromBottom (40);
@@ -90,10 +111,10 @@ void Primo_distoAudioProcessorEditor::resized()
     const int moduleWidth = juce::jmin (150, bottom.getWidth());
     moduleOrder.setBounds (bottom.withSizeKeepingCentre (moduleWidth, 30));
 
-    band1->setBounds (area);
-    
+    // BANDA
+    if (band1 != nullptr)
+        band1->setBounds (area);
 }
-
 
 void Primo_distoAudioProcessorEditor::updateModeButtons (float newValue)
 {

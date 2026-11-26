@@ -20,6 +20,10 @@ namespace Parameters
 
     static const String nameOrder = "ORDER";
 
+    static const String nameGainIn = "GAININ";
+
+    static const String nameGainOut = "GAINOUT";
+
     //==============================================================================
     // Valori di default
     static const float defaultDrive           = 0.0f;
@@ -29,6 +33,8 @@ namespace Parameters
     static const bool  defaultDriveBypass     = true;
     static const bool  defaultTransientBypass = true;
     static const int   defaultOrder           = 0;
+    static const float defaultGainIn          = 0;
+    static const float defaultGainOut         = 0;
 
     //==============================================================================
     static AudioProcessorValueTreeState::ParameterLayout createParameterLayout()
@@ -49,6 +55,10 @@ namespace Parameters
         params.push_back (std::make_unique<AudioParameterBool> (ParameterID (nameTransientBypass,  1), "TransientBypass", defaultTransientBypass));
 
         params.push_back (std::make_unique<AudioParameterInt> (ParameterID (nameOrder, 1), "Order", 0, 1, defaultOrder));
+        
+        params.push_back (std::make_unique<AudioParameterFloat> (ParameterID (nameGainIn, 1), "GainIn", NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f));
+        
+        params.push_back (std::make_unique<AudioParameterFloat> (ParameterID (nameGainOut, 1), "GainOut", NormalisableRange<float>(-24.0f, 24.0f, 0.1f), 0.0f));
 
         return { params.begin(), params.end() };
     }

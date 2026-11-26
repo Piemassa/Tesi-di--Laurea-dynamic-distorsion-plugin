@@ -28,6 +28,8 @@ private:
     
     void updateModeButtons (float newValue);
     
+    std::unique_ptr<LabeledKnob> inputGainKnob, outputGainKnob;
+    
     VerticalMeter meterIn, meterOut;
     
     std::unique_ptr<BandComponent> band1;
