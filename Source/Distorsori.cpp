@@ -85,11 +85,15 @@ void Distorsion_P::softSign(float &sample, float driveAmount) //type 2
 
 void Distorsion_P::TapeLike2(float &sample, float driveAmount) //type 3
 {
-    driveAmount += 1;
-    auto k = 3.782;
-    auto temp = sample * driveAmount;
-    sample =  tanh( k * temp) / tanh(k);
-    sample = sample / std::sqrt(driveAmount);
+
+    const float g = driveAmount * 1.5f;
+
+    if (g < 1.0e-3f)
+    {
+        return;
+    }
+
+    sample = std::tanh (g * sample) / std::tanh (g);
     
 }
 

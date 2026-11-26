@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "LookAndFeelKnob.h"
 
 // Knob rotativo + etichetta + attachment in un solo componente.
 class LabeledKnob : public juce::Component
@@ -12,7 +13,12 @@ public:
                  bool showTextBox = true)
         : attachment (apvts, paramID, slider),textBoxHeight (showTextBox ? 18 : 0)   // slider è già costruito (dichiarato prima)
     {
+        slider.setLookAndFeel (&knobLnf);
+
         slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
+        slider.setRotaryParameters (juce::MathConstants<float>::pi * 1.25f,
+                                    juce::MathConstants<float>::pi * 2.75f,
+                                    true);
         slider.setTextBoxStyle (showTextBox ? juce::Slider::TextBoxBelow
                                             : juce::Slider::NoTextBox,
                                 false, 60, 18);
@@ -23,11 +29,16 @@ public:
         addAndMakeVisible (slider);
         addAndMakeVisible (label);
     }
+    
+        ~LabeledKnob() override
+    {
+        slider.setLookAndFeel (nullptr);
+    }
 
     void resized() override
     {
         auto r = getLocalBounds();
-        const int dial = jmax (0, jmin (r.getWidth(), r.getHeight() - labelHeight - textBoxHeight));
+        const int dial = juce::jmax (0, juce::jmin (r.getWidth(), r.getHeight() - labelHeight - textBoxHeight));
         auto group = r.withSizeKeepingCentre (r.getWidth(), labelHeight + dial + textBoxHeight);
 
         label.setBounds  (group.removeFromTop (labelHeight));
@@ -37,7 +48,9 @@ public:
     juce::Slider& getSlider() { return slider; }
 
 private:
-    
+
+    LookAndFeelKnob knobLnf;
+
     static constexpr int labelHeight = 20;
     
     juce::Slider slider;

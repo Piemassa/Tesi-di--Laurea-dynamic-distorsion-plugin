@@ -54,6 +54,7 @@ void Primo_distoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     auto inCh  = getTotalNumInputChannels();
     auto outCh = getTotalNumOutputChannels();
     auto numSample = buffer.getNumSamples();
+    bool stereo = buffer.getNumChannels() > 1 ? true : false;
     
 
     
@@ -65,13 +66,16 @@ void Primo_distoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
     auto upBlock = m_Oversampler.processSamplesUp(block);
     
     auto leftChannel = upBlock.getChannelPointer(0);
-    auto rightChannel = upBlock.getChannelPointer(1);
+    auto rightChannel = stereo ?  upBlock.getChannelPointer(1) : nullptr;
+
+    
+    
     
     //ciclo su tutti i sample
-    for(int smp = 0; smp < upBlock.getNumSamples(); ++smp)
+    for(size_t smp = 0; smp < upBlock.getNumSamples(); ++smp)
     {
         float leftSampleCompare = std::abs(leftChannel[smp]);
-        float rightSampleCompare = std::abs(rightChannel[smp]);
+        float rightSampleCompare = stereo ? std::abs(rightChannel[smp]) : leftSampleCompare;
         
         float input_shaper = std::max(leftSampleCompare, rightSampleCompare);
         TransientShaper.processBlock(input_shaper);
@@ -89,7 +93,10 @@ void Primo_distoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
                     if(transientCircuitState == 1)
                     {
                         leftChannel[smp] *= gainMod;
-                        rightChannel[smp] *= gainMod;
+                        if(stereo)
+                        {
+                            rightChannel[smp] *= gainMod;
+                        }
                     }
                     break;
                     
@@ -98,7 +105,10 @@ void Primo_distoAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, 
                     if(driveCircuitState == 1)
                     {
                         distorsione.processBlock(leftChannel[smp]);
-                        distorsione.processBlock(rightChannel[smp]);
+                        if(stereo)
+                        {
+                            distorsione.processBlock(rightChannel[smp]);
+                        }
                     }
                     
                 default:
@@ -187,7 +197,7 @@ void Primo_distoAudioProcessor::updateModuleOrder(int orderChoice)
     // 1 = distorsion -> transientShaper
     moduleChain.clear();
     
-    if(orderChoice == 1)
+    if(orderChoice == 0)
     {
         moduleChain.push_back(AudioModuleType::TransientShaperModule);
         moduleChain.push_back(AudioModuleType::DistorsionModule);
@@ -198,8 +208,6 @@ void Primo_distoAudioProcessor::updateModuleOrder(int orderChoice)
         moduleChain.push_back(AudioModuleType::TransientShaperModule);
     }
 }
-
-
 
 //==============================================================================
 
